@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俯卧撑 Flappy Bird</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128038;</text></svg>">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Courier New',monospace; touch-action:none; }
+
+  #cam {
+    position:fixed; inset:0; width:100%; height:100%; object-fit:cover;
+    transform:scaleX(-1); z-index:0;
+  }
+  #veil {
+    position:fixed; inset:0; z-index:1; background:rgba(0,0,0,0.35);
+  }
+  #game {
+    position:fixed; inset:0; z-index:2; width:100%; height:100%;
+  }
+
+  /* ===== 开始页 ===== */
+  .overlay {
+    position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    background:rgba(0,0,0,0.78); color:#fff; padding:20px;
+  }
+  .overlay.hidden { display:none; }
+  .title {
+    font-size:clamp(28px,7vw,52px); font-weight:bold; letter-spacing:2px;
+    color:#ffd93d; text-shadow:3px 3px 0 #e74c3c, 6px 6px 0 #000;
+    margin-bottom:6px; line-height:1.1;
+  }
+  .subtitle { font-size:clamp(13px,3vw,18px); color:#aaa; margin-bottom:28px; }
+  .diff-label { font-size:14px; color:#888; margin-bottom:10px; letter-spacing:1px; }
+  .diff-row { display:flex; gap:10px; margin-bottom:28px; flex-wrap:wrap; justify-content:center; }
+  .diff-btn {
+    padding:12px 22px; font-size:16px; font-family:inherit; font-weight:bold;
+    border:3px solid #333; background:#f7d51d; color:#000; cursor:pointer;
+    border-radius:6px; transition:transform .1s, box-shadow .1s;
+    box-shadow:0 5px 0 #b8960c; min-width:80px;
+  }
+  .diff-btn:active { transform:translateY(4px); box-shadow:0 1px 0 #b8960c; }
+  .diff-btn.active { background:#e74c3c; color:#fff; box-shadow:0 5px 0 #922b21; border-color:#000; }
+  .big-btn {
+    padding:16px 40px; font-size:clamp(18px,5vw,24px); font-family:inherit; font-weight:bold;
+    background:#2ecc71; color:#fff; border:3px solid #1e8449; border-radius:8px;
+    cursor:pointer; box-shadow:0 6px 0 #1e8449; margin-bottom:16px; letter-spacing:2px;
+  }
+  .big-btn:active { transform:translateY(4px); box-shadow:0 2px 0 #1e8449; }
+  .big-btn:disabled { background:#888; border-color:#555; box-shadow:0 6px 0 #555; cursor:not-allowed; }
+  .hint { font-size:12px; color:#666; line-height:1.7; max-width:420px; }
+  .hint b { color:#aaa; }
+
+  /* 设置行 */
+  .settings-row { display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap; justify-content:center; }
+  .icon-btn {
+    padding:10px 16px; font-size:14px; font-family:inherit; background:#333; color:#fff;
+    border:2px solid #555; border-radius:6px; cursor:pointer;
+  }
+  .icon-btn:active { background:#444; }
+
+  /* ===== 倒计时/校准 ===== */
+  #countdown {
+    position:fixed; inset:0; z-index:8; display:none; flex-direction:column;
+    align-items:center; justify-content:center; color:#fff; text-align:center;
+    pointer-events:none;
+  }
+  #countdown .num {
+    font-size:clamp(80px,25vw,180px); font-weight:bold; color:#ffd93d;
+    text-shadow:4px 4px 0 #e74c3c, 8px 8px 0 #000;
+  }
+  #countdown .msg { font-size:clamp(14px,4vw,20px); margin-top:20px; color:#fff; text-shadow:2px 2px 0 #000; }
+
+  /* ===== 游戏内 HUD ===== */
+  #hud {
+    position:fixed; top:10px; left:0; right:0; z-index:5;
+    display:flex; justify-content:space-between; padding:0 14px;
+    pointer-events:none;
+  }
+  #score {
+    font-size:clamp(40px,10vw,64px); font-weight:bold; color:#fff;
+    text-shadow:3px 3px 0 #000, -1px -1px 0 #000;
+  }
+  #hud-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  #diff-tag { font-size:12px; color:#ffd93d; background:rgba(0,0,0,.5); padding:3px 8px; border-radius:4px; }
+  #mute-btn {
+    pointer-events:auto; background:rgba(0,0,0,.5); color:#fff; border:none;
+    padding:8px 12px; border-radius:6px; font-size:16px; cursor:pointer;
+  }
+
+  /* 肩膀指示条 */
+  #shoulder-bar {
+    position:fixed; right:10px; top:50%; transform:translateY(-50%);
+    width:6px; height:40%; background:rgba(255,255,255,.15); border-radius:3px; z-index:5;
+  }
+  #shoulder-marker {
+    position:absolute; left:-4px; width:14px; height:14px; border-radius:50%;
+    background:#2ecc71; border:2px solid #fff; transition:top .05s linear;
+  }
+  #shoulder-threshold {
+    position:absolute; left:-6px; width:18px; height:2px; background:#e74c3c;
+  }
+
+  /* ===== Game Over ===== */
+  #gameover .go-title {
+    font-size:clamp(32px,9vw,60px); font-weight:bold; color:#e74c3c;
+    text-shadow:3px 3px 0 #000; margin-bottom:20px;
+  }
+  .go-card {
+    background:linear-gradient(#f7d51d,#e8b90c); border:4px solid #000; border-radius:10px;
+    padding:20px 30px; color:#000; margin-bottom:20px; min-width:260px;
+  }
+  .go-row { display:flex; justify-content:space-between; font-size:18px; font-weight:bold; margin:6px 0; }
+  .go-row .val { color:#c0392b; }
+  .go-row .val.best { color:#27ae60; }
+  #face-shot {
+    width:120px; height:160px; object-fit:cover; border:4px solid #000; border-radius:8px;
+    margin:0 auto 16px; display:block; transform:scaleX(-1); background:#222;
+  }
+  .go-btns { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  .go-btns button {
+    padding:14px 28px; font-size:18px; font-family:inherit; font-weight:bold;
+    border:3px solid #000; border-radius:6px; cursor:pointer;
+  }
+  #retry-btn { background:#2ecc71; color:#fff; box-shadow:0 5px 0 #1e8449; }
+  #menu-btn { background:#ecf0f1; color:#000; box-shadow:0 5px 0 #95a5a6; }
+  .go-btns button:active { transform:translateY(4px); box-shadow:0 1px 0 #555; }
+
+  .exhausted-tag {
+    color:#e74c3c; font-size:14px; margin-top:4px; font-weight:bold;
+  }
+</style>
+</head>
+<body>
+
+<video id="cam" autoplay playsinline muted></video>
+<div id="veil"></div>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" style="display:none;">
+  <div id="score">0</div>
+  <div id="hud-right">
+    <button id="mute-btn">🔊</button>
+    <div id="diff-tag">普通</div>
+  </div>
+</div>
+<div id="shoulder-bar" style="display:none;">
+  <div id="shoulder-threshold"></div>
+  <div id="shoulder-marker"></div>
+</div>
+
+<!-- 倒计时 -->
+<div id="countdown">
+  <div class="num" id="cd-num">3</div>
+  <div class="msg" id="cd-msg">准备好你的俯卧撑姿势…</div>
+</div>
+
+<!-- 开始页 -->
+<div class="overlay" id="start-screen">
+  <div class="title">俯卧撑<br>FLAPPY BIRD</div>
+  <div class="subtitle">每一次下潜 · 每一次撑起 · 都是翅膀</div>
+  <div class="diff-label">— 选择难度 —</div>
+  <div class="diff-row" id="diff-row">
+    <button class="diff-btn" data-diff="easy">简单</button>
+    <button class="diff-btn active" data-diff="normal">普通</button>
+    <button class="diff-btn" data-diff="hard">力竭</button>
+  </div>
+  <button class="big-btn" id="start-btn">开启摄像头</button>
+  <div class="settings-row">
+    <button class="icon-btn" id="mute-start">🔊 音效开</button>
+    <button class="icon-btn" id="custom-sound">自定义音效</button>
+    <input type="file" id="sound-upload" accept="audio/*" style="display:none;" multiple>
+  </div>
+  <div class="hint" style="margin-top:20px;">
+    <b>玩法：</b>面对摄像头做俯卧撑。<br>
+    下潜到底时小鸟拍翅一次，撑起到顶再拍一次。<br>
+    撞到管子、或力竭趴地 3 秒即结束。<br>
+    空格键也可临时模拟跳跃。
+  </div>
+</div>
+
+<!-- Game Over -->
+<div class="overlay hidden" id="gameover">
+  <div class="go-title" id="go-title">GAME OVER</div>
+  <canvas id="face-shot" width="240" height="320"></canvas>
+  <div class="go-card">
+    <div class="go-row"><span>得分</span><span class="val" id="go-score">0</span></div>
+    <div class="go-row"><span>最高</span><span class="val best" id="go-best">0</span></div>
+  </div>
+  <div class="go-btns">
+    <button id="retry-btn">再来一次</button>
+    <button id="menu-btn">换难度</button>
+  </div>
+</div>
+
+<script src="https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" crossorigin="anonymous"></script>
+<script>
+(function(){
+'use strict';
+
+// ============ 难度配置 ============
+const DIFFS = {
+  easy:   { gravity:0.22, pipeSpeed:1.8, pipeGap:280, pipeWidth:70, label:'简单' },
+  normal: { gravity:0.30, pipeSpeed:2.3, pipeGap:235, pipeWidth:65, label:'普通' },
+  hard:   { gravity:0.40, pipeSpeed:2.8, pipeGap:195, pipeWidth:60, label:'力竭' }
+};
+let curDiff = 'normal';
+let cfg = DIFFS[curDiff];
+
+// ============ DOM ============
+const video = document.getElementById('cam');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const startScreen = document.getElementById('start-screen');
+const gameoverScreen = document.getElementById('gameover');
+const startBtn = document.getElementById('start-btn');
+const scoreEl = document.getElementById('score');
+const hud = document.getElementById('hud');
+const shoulderBar = document.getElementById('shoulder-bar');
+const shoulderMarker = document.getElementById('shoulder-marker');
+const shoulderThreshold = document.getElementById('shoulder-threshold');
+const countdownEl = document.getElementById('countdown');
+const cdNum = document.getElementById('cd-num');
+const cdMsg = document.getElementById('cd-msg');
+const muteBtn = document.getElementById('mute-btn');
+const muteStart = document.getElementById('mute-start');
+const diffRow = document.getElementById('diff-row');
+
+// ============ 画布尺寸 ============
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============ 音效（Web Audio 合成 8-bit）============
+let audioCtx = null;
+let muted = false;
+let customSounds = null; // {flap: AudioBuffer, score: AudioBuffer, hit: AudioBuffer}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep(freq, dur, type, vol) {
+  if (muted || !audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type || 'square';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(vol||0.15, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+
+function playFlap() {
+  if (customSounds && customSounds.flap) { playBuffer(customSounds.flap); return; }
+  beep(600, 0.08, 'square', 0.12);
+  setTimeout(()=>beep(900,0.06,'square',0.10), 40);
+}
+function playScore() {
+  if (customSounds && customSounds.score) { playBuffer(customSounds.score); return; }
+  beep(1200, 0.1, 'sine', 0.15);
+  setTimeout(()=>beep(1600,0.12,'sine',0.15), 80);
+}
+function playHit() {
+  if (customSounds && customSounds.hit) { playBuffer(customSounds.hit); return; }
+  beep(200, 0.2, 'sawtooth', 0.2);
+  setTimeout(()=>beep(100,0.3,'sawtooth',0.2), 100);
+}
+function playBuffer(buf) {
+  if (muted || !audioCtx) return;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const g = audioCtx.createGain(); g.gain.value = 0.5;
+  src.connect(g); g.connect(audioCtx.destination);
+  src.start();
+}
+
+function toggleMute() {
+  muted = !muted;
+  const icon = muted ? '🔇' : '🔊';
+  muteBtn.textContent = icon;
+  muteStart.textContent = icon + (muted ? ' 音效关' : ' 音效开');
+}
+muteBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMute(); });
+muteStart.addEventListener('click', toggleMute);
+
+// 自定义音效上传
+document.getElementById('custom-sound').addEventListener('click', ()=>{
+  document.getElementById('sound-upload').click();
+});
+document.getElementById('sound-upload').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  ensureAudio();
+  customSounds = customSounds || {};
+  for (const f of files) {
+    try {
+      const buf = await f.arrayBuffer();
+      const decoded = await audioCtx.decodeAudioData(buf);
+      // 根据文件名猜用途
+      const n = f.name.toLowerCase();
+      if (n.includes('flap') || n.includes('jump') || n.includes('翅膀')) customSounds.flap = decoded;
+      else if (n.includes('score') || n.includes('point') || n.includes('得分')) customSounds.score = decoded;
+      else if (n.includes('hit') || n.includes('die') || n.includes('撞')) customSounds.hit = decoded;
+      else {
+        // 没指定就按顺序：第一个当 flap，第二个 score，第三个 hit
+        if (!customSounds.flap) customSounds.flap = decoded;
+        else if (!customSounds.score) customSounds.score = decoded;
+        else if (!customSounds.hit) customSounds.hit = decoded;
+      }
+    } catch(err){ console.warn('audio decode failed', err); }
+  }
+  alert('已加载 ' + files.length + ' 个自定义音效文件\n（文件名含 flap/jump/score/point/hit/die 会自动对应）');
+});
+
+// ============ 难度选择 ============
+diffRow.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.diff-btn');
+  if (!btn) return;
+  curDiff = btn.dataset.diff;
+  cfg = DIFFS[curDiff];
+  document.querySelectorAll('.diff-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  document.getElementById('diff-tag').textContent = cfg.label;
+});
+
+// ============ 游戏状态 ============
+const STATE = { MENU:0, COUNTDOWN:1, PLAYING:2, DEAD:3 };
+let state = STATE.MENU;
+
+const bird = { x:0, y:0, vy:0, r:14, rot:0, wing:0 };
+let pipes = [];
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('pf_best')||'0', 10);
+let frameCount = 0;
+let deathReason = '';
+let groundY = 0;
+
+// 姿态相关
+let pose = null;        // PoseLandmarker
+let shoulderY = null;   // 0-1, 相对于画面（镜像后）
+let shoulderMin = 1, shoulderMax = 0;
+let calibStart = 0;
+let lastShoulderTime = 0;
+let lastMoveDir = 0; // -1: 在上半区, 1: 在下半区
+let threshold = 0.5;
+
+function resetGame() {
+  bird.x = W * 0.28;
+  bird.y = H * 0.45;
+  bird.vy = 0;
+  bird.rot = 0;
+  pipes = [];
+  score = 0;
+  scoreEl.textContent = '0';
+  frameCount = 0;
+  shoulderY = null;
+  shoulderMin = 1; shoulderMax = 0;
+  threshold = 0.5;
+  lastMoveDir = 0;
+  lastShoulderTime = performance.now();
+  detectPose._lastY = null;
+  deathReason = '';
+  groundY = H - 60;
+}
+
+function spawnPipe() {
+  const gap = cfg.pipeGap;
+  const margin = 60;
+  const gapY = margin + Math.random() * (H - gap - margin*2);
+  pipes.push({
+    x: W + 20,
+    gapY: gapY,
+    gap: gap,
+    w: cfg.pipeWidth,
+    passed: false
+  });
+}
+
+function flap() {
+  bird.vy = -cfg.gravity * 7.5;
+  bird.wing = 8;
+  playFlap();
+}
+
+// ============ 摄像头 + MediaPipe ============
+async function setupCamera() {
+  startBtn.textContent = '加载中…';
+  startBtn.disabled = true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await new Promise(r=>{ video.onloadedmetadata = r; });
+    await video.play();
+
+    // 加载 MediaPipe
+    startBtn.textContent = '加载 AI 模型…';
+    const vision = await window.FilesetResolver.forVisionTasks(
+      'https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    pose = await window.PoseLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+        delegate: 'network'
+      },
+      runningMode: 'VIDEO',
+      numPoses: 1
+    });
+    startGame();
+  } catch(err) {
+    console.error(err);
+    startBtn.textContent = '摄像头/模型加载失败，重试';
+    startBtn.disabled = false;
+    alert('加载失败：' + err.message + '\n请确认摄像头权限已开启，且使用 HTTPS 或 localhost 打开。');
+  }
+}
+
+startBtn.addEventListener('click', ()=>{
+  ensureAudio();
+  setupCamera();
+});
+
+// ============ 倒计时 & 校准 ============
+function startGame() {
+  resetGame();
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  hud.style.display = 'flex';
+  shoulderBar.style.display = 'block';
+  countdownEl.style.display = 'flex';
+  state = STATE.COUNTDOWN;
+  calibStart = performance.now();
+  let cd = 3;
+  cdNum.textContent = cd;
+  cdMsg.textContent = '保持俯卧撑预备姿势…';
+
+  const cdTimer = setInterval(()=>{
+    cd--;
+    if (cd > 0) {
+      cdNum.textContent = cd;
+      cdMsg.textContent = '保持俯卧撑预备姿势…';
+    } else if (cd === 0) {
+      cdNum.textContent = 'GO';
+      cdMsg.textContent = '开始！下潜 → 撑起 → 飞！';
+    } else {
+      clearInterval(cdTimer);
+      countdownEl.style.display = 'none';
+      state = STATE.PLAYING;
+    }
+  }, 800);
+}
+
+// ============ 姿态检测循环 ============
+let lastVideoTime = -1;
+function detectPose() {
+  if (!pose || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+
+  try {
+    const results = pose.detectForVideo(video, performance.now());
+    if (results.landmarks && results.landmarks.length > 0) {
+      const lm = results.landmarks[0];
+      const lShoulder = lm[11];
+      const rShoulder = lm[12];
+      if (lShoulder && rShoulder && lShoulder.visibility > 0.5 && rShoulder.visibility > 0.5) {
+        // 镜像：视频是 scaleX(-1) 显示的，但 landmarks 是原始坐标。
+        // 我们只取 y，不受镜像影响。
+        const y = (lShoulder.y + rShoulder.y) / 2;
+        shoulderY = y;
+
+        // 校准阶段采集范围
+        if (state === STATE.COUNTDOWN) {
+          if (y < shoulderMin) shoulderMin = y;
+          if (y > shoulderMax) shoulderMax = y;
+          if (shoulderMax - shoulderMin > 0.05) {
+            threshold = (shoulderMin + shoulderMax) / 2;
+          }
+        } else {
+          // 游戏中缓慢滑动更新范围
+          if (y < shoulderMin) shoulderMin = y;
+          if (y > shoulderMax) shoulderMax = y;
+          // 每 10 秒重新计算 threshold
+          if (frameCount % 600 === 0) {
+            threshold = (shoulderMin + shoulderMax) / 2;
+          }
+
+          // 越线触发
+          const side = y > threshold ? 1 : -1; // 1=在下半区(低位/下潜), -1=在上半区(高位/撑起)
+          if (lastMoveDir !== 0 && side !== lastMoveDir && state === STATE.PLAYING) {
+            flap();
+          }
+          lastMoveDir = side;
+
+          // 力竭检测
+          const now = performance.now();
+          if (Math.abs(y - (detectPose._lastY || y)) > 0.01) {
+            lastShoulderTime = now;
+          }
+          detectPose._lastY = y;
+        }
+
+        // 更新指示条
+        const pct = (1 - y) * 100; // y=0 是画面顶部, marker 应该在顶部
+        shoulderMarker.style.top = pct + '%';
+        const thPct = (1 - threshold) * 100;
+        shoulderThreshold.style.top = thPct + '%';
+      }
+    }
+  } catch(e){ /* 忽略单帧错误 */ }
+}
+
+// ============ 键盘备用 ============
+window.addEventListener('keydown', (e)=>{
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (state === STATE.PLAYING) flap();
+    else if (state === STATE.DEAD) retry();
+  }
+});
+
+// ============ 死亡 ============
+function die(reason) {
+  if (state !== STATE.PLAYING) return;
+  state = STATE.DEAD;
+  deathReason = reason;
+  playHit();
+
+  // 抓脸
+  const faceCanvas = document.getElementById('face-shot');
+  const fctx = faceCanvas.getContext('2d');
+  // 镜像画
+  fctx.save();
+  fctx.translate(faceCanvas.width, 0);
+  fctx.scale(-1, 1);
+  // 居中裁剪：从视频中心取一块方形
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const side = Math.min(vw, vh);
+  const sx = (vw - side)/2, sy = (vh - side)/2;
+  fctx.drawImage(video, sx, sy, side, side, 0, 0, faceCanvas.width, faceCanvas.height);
+  fctx.restore();
+
+  // 最高分
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('pf_best', String(bestScore));
+  }
+  document.getElementById('go-score').textContent = score;
+  document.getElementById('go-best').textContent = bestScore;
+  document.getElementById('go-title').textContent = reason === 'exhausted' ? '力竭了…' : 'GAME OVER';
+
+  setTimeout(()=>{
+    gameoverScreen.classList.remove('hidden');
+  }, 600);
+}
+
+function retry() { startGame(); }
+document.getElementById('retry-btn').addEventListener('click', retry);
+document.getElementById('menu-btn').addEventListener('click', ()=>{
+  gameoverScreen.classList.add('hidden');
+  hud.style.display = 'none';
+  shoulderBar.style.display = 'none';
+  startScreen.classList.remove('hidden');
+  state = STATE.MENU;
+});
+
+// ============ 像素绘制 ============
+function drawPixelBird(x, y, rot, wing) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  const s = 2; // 像素缩放
+  // 身体（黄色）
+  ctx.fillStyle = '#f7d51d';
+  // 8x8 像素鸟
+  const px = [
+    "..YYYY..",
+    ".YYYYYY.",
+    "YWYYYYY.",
+    "YWYYYYWW",
+    "YYYYYYYY",
+    ".YYOOY..",
+    "..YY....",
+    "........"
+  ];
+  // 简化：画圆角矩形 + 嘴 + 眼
+  ctx.fillStyle = '#f7d51d';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 14, 11, 0, 0, Math.PI*2);
+  ctx.fill();
+  // 肚皮
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(2, 4, 8, 5, 0, 0, Math.PI*2);
+  ctx.fill();
+  // 嘴
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.moveTo(10, -2); ctx.lineTo(20, 0); ctx.lineTo(10, 3);
+  ctx.closePath(); ctx.fill();
+  // 眼
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(4, -3, 4, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(5, -3, 2, 0, Math.PI*2); ctx.fill();
+  // 翅膀（扇动动画）
+  ctx.fillStyle = '#e8b90c';
+  ctx.beginPath();
+  ctx.ellipse(-3, wing > 0 ? -2 : 2, 6, 4, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPipe(x, gapY, gapH, w) {
+  // 上管
+  drawPipeBody(x, 0, w, gapY, false);
+  // 下管
+  drawPipeBody(x, gapY + gapH, w, H - (gapY + gapH) - 60, true);
+}
+function drawPipeBody(x, y, w, h, isBottom) {
+  if (h <= 0) return;
+  // 管身
+  const grad = ctx.createLinearGradient(x, 0, x+w, 0);
+  grad.addColorStop(0, '#1e8449');
+  grad.addColorStop(0.3, '#2ecc71');
+  grad.addColorStop(0.7, '#27ae60');
+  grad.addColorStop(1, '#145a32');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  // 管口
+  const lipH = 26;
+  const lipY = isBottom ? y : y + h - lipH;
+  ctx.fillStyle = grad;
+  ctx.fillRect(x - 4, lipY, w + 8, lipH);
+  ctx.strokeRect(x - 4, lipY, w + 8, lipH);
+}
+
+function drawGround() {
+  ctx.fillStyle = '#ded895';
+  ctx.fillRect(0, H - 60, W, 60);
+  ctx.fillStyle = '#8b7355';
+  ctx.fillRect(0, H - 60, W, 6);
+  // 草地条纹
+  ctx.fillStyle = '#2ecc71';
+  for (let x = 0; x < W; x += 20) {
+    ctx.fillRect(x, H - 58, 10, 4);
+  }
+}
+
+// ============ 主循环 ============
+function loop() {
+  requestAnimationFrame(loop);
+  detectPose();
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === STATE.MENU) {
+    return;
+  }
+
+  frameCount++;
+
+  // 物理
+  bird.vy += cfg.gravity;
+  bird.y += bird.vy;
+  bird.rot = Math.max(-0.5, Math.min(1.2, bird.vy * 0.08));
+  if (bird.wing > 0) bird.wing--;
+
+  // 管子
+  if (frameCount % 110 === 0) spawnPipe();
+  for (let i = pipes.length - 1; i >= 0; i--) {
+    const p = pipes[i];
+    p.x -= cfg.pipeSpeed;
+    if (p.x + p.w < -20) { pipes.splice(i, 1); continue; }
+    // 计分
+    if (!p.passed && p.x + p.w < bird.x - bird.r) {
+      p.passed = true;
+      score++;
+      scoreEl.textContent = score;
+      playScore();
+    }
+    // 碰撞
+    if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + p.w) {
+      if (bird.y - bird.r < p.gapY || bird.y + bird.r > p.gapY + p.gap) {
+        die('hit');
+      }
+    }
+  }
+
+  // 地面/天花板
+  if (bird.y + bird.r > H - 60) { bird.y = H - 60 - bird.r; die('hit'); }
+  if (bird.y - bird.r < 0) { bird.y = bird.r; bird.vy = 0; }
+
+  // 力竭判定
+  if (state === STATE.PLAYING && shoulderY !== null) {
+    const idleMs = performance.now() - lastShoulderTime;
+    if (idleMs > 3000) {
+      die('exhausted');
+    }
+  }
+
+  // 绘制
+  drawGround();
+  for (const p of pipes) drawPipe(p.x, p.gapY, p.gap, p.w);
+  drawPixelBird(bird.x, bird.y, bird.rot, bird.wing);
+
+  // 力竭警告
+  if (state === STATE.PLAYING && shoulderY !== null) {
+    const idleMs = performance.now() - lastShoulderTime;
+    if (idleMs > 1500) {
+      ctx.fillStyle = 'rgba(231,76,60,' + (0.3 + Math.sin(frameCount*0.2)*0.2) + ')';
+      ctx.font = 'bold 20px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('力竭警告…', W/2, H - 100);
+    }
+  }
+}
+loop();
+
+// 初始化最高分显示
+document.getElementById('go-best').textContent = bestScore;
+
+})();
+</script>
+</body>
+</html>
